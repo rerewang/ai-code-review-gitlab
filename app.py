@@ -16,7 +16,7 @@ app = Flask(__name__)
 
 # 初始化客户端
 gitlab_client = GitLabClient()
-ai_client = AIClient(model_type="openai")  # 可以改为 "deepseek"
+ai_client = AIClient()
 code_reviewer = CodeReviewer(gitlab_client, ai_client)
 
 @app.route('/webhook', methods=['POST'])

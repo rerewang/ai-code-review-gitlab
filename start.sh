@@ -29,16 +29,16 @@ echo "🔍 检查配置..."
 python3 -c "
 import sys
 try:
-    from config import GITLAB_TOKEN, OPENAI_API_KEY
+    from config import GITLAB_TOKEN, AI_API_KEY
     print('✅ 配置文件加载成功')
     if GITLAB_TOKEN == 'your-gitlab-token-here':
         print('⚠️  警告: GitLab token 还是默认值，请修改配置')
     else:
         print('✅ GitLab token 已配置')
-    if OPENAI_API_KEY == 'your-openai-api-key-here':
-        print('⚠️  警告: OpenAI API key 还是默认值，请修改配置')
+    if AI_API_KEY == 'your-api-key-here':
+        print('⚠️  警告: AI API key 还是默认值，请修改配置')
     else:
-        print('✅ OpenAI API key 已配置')
+        print('✅ AI API key 已配置')
 except Exception as e:
     print(f'❌ 配置检查失败: {e}')
     sys.exit(1)
