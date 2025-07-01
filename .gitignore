@@ -23,7 +23,6 @@ wheels/
 MANIFEST
 
 # 敏感配置文件
-config.py
 .env
 *.key
 *.pem

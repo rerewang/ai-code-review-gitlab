@@ -8,9 +8,11 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# 检查配置文件
-if [ ! -f "config.py" ]; then
-    echo "❌ 错误: 配置文件 config.py 不存在"
+# 检查环境变量文件
+if [ ! -f ".env" ]; then
+    echo "❌ 错误: 环境变量文件 .env 不存在"
+    echo "💡 请先复制 env.example 为 .env 并填入你的配置"
+    echo "   cp env.example .env"
     exit 1
 fi
 
@@ -28,17 +30,36 @@ pip3 install -r requirements.txt
 echo "🔍 检查配置..."
 python3 -c "
 import sys
+import os
+from dotenv import load_dotenv
+
 try:
-    from config import GITLAB_TOKEN, AI_API_KEY
-    print('✅ 配置文件加载成功')
-    if GITLAB_TOKEN == 'your-gitlab-token-here':
-        print('⚠️  警告: GitLab token 还是默认值，请修改配置')
+    load_dotenv()
+    gitlab_token = os.getenv('GITLAB_TOKEN')
+    ai_provider = os.getenv('AI_PROVIDER', 'siliconflow')
+    
+    if ai_provider == 'siliconflow':
+        api_key = os.getenv('SILICONFLOW_API_KEY')
+    elif ai_provider == 'aliyun':
+        api_key = os.getenv('ALIYUN_API_KEY')
+    elif ai_provider == 'openai':
+        api_key = os.getenv('OPENAI_API_KEY')
+    else:
+        api_key = os.getenv('SILICONFLOW_API_KEY')
+    
+    print('✅ 环境变量加载成功')
+    print(f'🔧 AI提供商: {ai_provider}')
+    
+    if not gitlab_token or gitlab_token == 'your-gitlab-token-here':
+        print('⚠️  警告: GitLab token 未配置或还是默认值')
     else:
         print('✅ GitLab token 已配置')
-    if AI_API_KEY == 'your-api-key-here':
-        print('⚠️  警告: AI API key 还是默认值，请修改配置')
+        
+    if not api_key or api_key == 'your-siliconflow-api-key-here':
+        print('⚠️  警告: AI API key 未配置或还是默认值')
     else:
         print('✅ AI API key 已配置')
+        
 except Exception as e:
     print(f'❌ 配置检查失败: {e}')
     sys.exit(1)
