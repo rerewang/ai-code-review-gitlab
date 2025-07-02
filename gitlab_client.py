@@ -38,12 +38,24 @@ class GitLabClient:
     
     def get_file_content(self, project_id, file_path, branch="main"):
         """获取文件内容"""
-        url = f"{GITLAB_URL}/api/v4/projects/{project_id}/repository/files/{file_path}/raw"
+        # 对文件路径进行URL编码
+        encoded_path = file_path.replace('/', '%2F')
+        url = f"{GITLAB_URL}/api/v4/projects/{project_id}/repository/files/{encoded_path}/raw"
         params = {"ref": branch}
         response = requests.get(url, headers=self.headers, params=params)
         if response.status_code == 200:
             return response.text
         return None
+    
+    def get_project_files(self, project_id, branch="main", path=""):
+        """获取项目文件列表"""
+        url = f"{GITLAB_URL}/api/v4/projects/{project_id}/repository/tree"
+        params = {"ref": branch, "path": path, "recursive": "true"}
+        response = requests.get(url, headers=self.headers, params=params)
+        if response.status_code == 200:
+            files = response.json()
+            return [file["path"] for file in files if file["type"] == "blob"]
+        return []
     
     def is_merge_request_opened(self, webhook_data):
         """判断是否是Merge Request打开事件"""
