@@ -1,6 +1,6 @@
 # @cursor start
 import requests
-from config import AI_API_URL, AI_MODEL, AI_API_KEY, AI_API_KEY_HEADER, AI_API_KEY_PREFIX
+from config import AI_API_URL, AI_MODEL, AI_API_KEY
 
 class AIClient:
     """通用AI大模型客户端，支持任意厂商"""
@@ -11,7 +11,7 @@ class AIClient:
         from config import REVIEW_PROMPT
         prompt = REVIEW_PROMPT.format(code_changes=code_changes)
         headers = {
-            AI_API_KEY_HEADER: f"{AI_API_KEY_PREFIX}{AI_API_KEY}",
+            "Authorization": f"Bearer {AI_API_KEY}",
             "Content-Type": "application/json"
         }
         # 适配不同厂商的参数格式
