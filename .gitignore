@@ -39,4 +39,8 @@ MANIFEST
 # 临时文件
 *.tmp
 *.temp
+
+# 测试文件
+test_*.py
+*_test.py
 # @cursor end 
