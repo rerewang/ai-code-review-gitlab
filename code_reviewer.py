@@ -12,6 +12,33 @@ class CodeReviewer:
         self.gitlab_client = gitlab_client
         self.ai_client = ai_client
         # self.prd_analyzer = PRDAnalyzer(gitlab_client)  # 暂不启用PRD分析
+        
+        # 添加缓存机制
+        self._file_cache = {}  # 文件内容缓存
+        self._cache_lock = threading.Lock()  # 缓存锁
+    
+    def _get_cached_file_content(self, project_id, file_path, branch="main"):
+        """获取缓存的文件内容"""
+        cache_key = f"{project_id}:{file_path}:{branch}"
+        
+        with self._cache_lock:
+            if cache_key in self._file_cache:
+                return self._file_cache[cache_key]
+            
+            # 获取文件内容并缓存
+            try:
+                content = self.gitlab_client.get_file_content(project_id, file_path, branch)
+                self._file_cache[cache_key] = content
+                return content
+            except Exception as e:
+                print(f"获取文件内容失败: {e}")
+                self._file_cache[cache_key] = None
+                return None
+    
+    def _clear_cache(self):
+        """清理缓存"""
+        with self._cache_lock:
+            self._file_cache.clear()
     
     def should_review_file(self, file_path):
         """判断是否需要审查该文件"""
@@ -84,9 +111,9 @@ class CodeReviewer:
         }
     
     def get_file_context(self, project_id, file_path, diff_blocks, branch="main"):
-        """获取文件上下文"""
+        """获取文件上下文（优化版）"""
         try:
-            file_content = self.gitlab_client.get_file_content(project_id, file_path, branch)
+            file_content = self._get_cached_file_content(project_id, file_path, branch)
             if not file_content:
                 return []
             
@@ -115,8 +142,19 @@ class CodeReviewer:
             return []
     
     def format_code_changes_with_context(self, changes, project_id, branch="main"):
-        """格式化代码变更信息（包含上下文）"""
+        """格式化代码变更信息（包含上下文，优化版）"""
         formatted_changes = []
+        
+        # 批量获取文件内容，减少API调用
+        files_to_fetch = set()
+        for change in changes:
+            if self.should_review_file(change.get('new_path')):
+                file_path = change.get('new_path', 'unknown')
+                files_to_fetch.add((project_id, file_path, branch))
+        
+        # 预加载文件内容到缓存
+        for project_id, file_path, branch in files_to_fetch:
+            self._get_cached_file_content(project_id, file_path, branch)
         
         for change in changes:
             if not self.should_review_file(change.get('new_path')):
@@ -193,8 +231,11 @@ class CodeReviewer:
         return 'text'
     
     def generate_inline_comments(self, changes, project_id, branch="main"):
-        """生成行内评论"""
+        """生成真正的行内评论（优化版 - 批量处理）"""
         inline_comments = []
+        
+        # 收集所有需要生成评论的块
+        comment_blocks = []
         
         for change in changes:
             if not self.should_review_file(change.get('new_path')):
@@ -205,29 +246,95 @@ class CodeReviewer:
             
             parsed_diff = self.parse_diff(diff_content)
             
-            # 为每个diff块生成评论
+            # 为每个diff块收集评论信息
             for block in parsed_diff['blocks']:
-                if block['new_lines'] or block['removed_lines']:
-                    # 生成简短的评论
-                    block_content = f"变更位置: 第{block['new_start']}行\n"
-                    if block['new_lines']:
-                        block_content += f"新增代码:\n{chr(10).join(block['new_lines'])}\n"
-                    if block['old_lines']:
-                        block_content += f"删除代码:\n{chr(10).join(block['old_lines'])}"
+                if block['new_lines'] or block['old_lines']:
+                    # 为新增的代码行生成评论
+                    for i, line in enumerate(block['new_lines']):
+                        line_number = block['new_start'] + i
+                        block_content = f"文件: {file_path}\n行号: {line_number}\n代码: {line}\n"
+                        
+                        comment_blocks.append({
+                            'file_path': file_path,
+                            'line_number': line_number,
+                            'line_type': 'new',
+                            'content': block_content,
+                            'code_line': line
+                        })
                     
-                    # 使用AI生成评论
-                    comment = self.ai_client.review_code(block_content)
+                    # 为删除的代码行生成评论
+                    for i, line in enumerate(block['old_lines']):
+                        line_number = block['old_start'] + i
+                        block_content = f"文件: {file_path}\n行号: {line_number}\n删除代码: {line}\n"
+                        
+                        comment_blocks.append({
+                            'file_path': file_path,
+                            'line_number': line_number,
+                            'line_type': 'old',
+                            'content': block_content,
+                            'code_line': line
+                        })
+        
+        # 批量生成评论（限制数量避免过载）
+        if comment_blocks:
+            # 只处理前5个最重要的变更
+            important_blocks = comment_blocks[:5]
+            
+            # 合并所有块内容，一次性调用AI
+            combined_content = "\n\n---\n\n".join([block['content'] for block in important_blocks])
+            
+            try:
+                # 使用AI批量生成评论（使用专门的行内评论提示词）
+                inline_prompt = f"""你是代码审查专家。请对以下代码行进行简洁的行内评论。
+
+要求：
+1. 评论要简洁明了，不超过50字
+2. 针对具体代码行的问题或建议
+3. 使用中文，语气友好
+4. 如果是好的代码，可以给出正面评价
+
+代码行：
+{combined_content}
+
+请为每个代码行生成一行评论，用"---"分隔："""
+                
+                ai_response = self.ai_client.review_code(inline_prompt)
+                
+                # 分割AI响应
+                responses = ai_response.split('\n---\n')
+                
+                for i, block in enumerate(important_blocks):
+                    if i < len(responses):
+                        comment = responses[i].strip()
+                        # 清理评论内容，只保留第一行
+                        comment = comment.split('\n')[0].strip()
+                        # 限制长度
+                        short_comment = comment[:80] + "..." if len(comment) > 80 else comment
+                    else:
+                        # 默认评论
+                        short_comment = "建议检查这行代码的逻辑"
                     
                     inline_comments.append({
-                        'file_path': file_path,
-                        'line': block['new_start'],
-                        'comment': comment[:200] + "..." if len(comment) > 200 else comment
+                        'file_path': block['file_path'],
+                        'line_number': block['line_number'],
+                        'line_type': block['line_type'],
+                        'comment': short_comment
+                    })
+            except Exception as e:
+                print(f"生成行内评论失败: {e}")
+                # 如果批量处理失败，返回简单的评论
+                for block in important_blocks[:3]:
+                    inline_comments.append({
+                        'file_path': block['file_path'],
+                        'line_number': block['line_number'],
+                        'line_type': block['line_type'],
+                        'comment': f"建议检查这行代码的逻辑和错误处理。"
                     })
         
         return inline_comments
     
     def review_merge_request(self, project_id, mr_iid):
-        """审查整个Merge Request"""
+        """审查整个Merge Request（优化版）"""
         try:
             # 获取代码变更
             changes = self.gitlab_client.get_merge_request_changes(project_id, mr_iid)
@@ -248,22 +355,31 @@ class CodeReviewer:
             # 使用AI审查
             review_result = self.ai_client.review_code(formatted_changes)
             
-            # 生成行内评论
+            # 生成真正的行内评论
             inline_comments = self.generate_inline_comments(
                 changes, project_id, merge_info.get('source_branch', 'main')
             )
             
-            # 组合最终结果
-            final_result = review_result
-            
+            # 添加真正的行内评论
             if inline_comments:
-                final_result += f"\n\n## 💬 行内评论建议\n\n"
-                for comment in inline_comments[:5]:  # 限制数量
-                    final_result += f"- **{comment['file_path']}** (第{comment['line']}行): {comment['comment']}\n"
+                try:
+                    self.gitlab_client.add_multiple_inline_comments(project_id, mr_iid, inline_comments)
+                    review_result += f"\n\n✅ 已添加 {len(inline_comments)} 个行内评论"
+                except Exception as e:
+                    print(f"添加行内评论失败: {e}")
+                    # 如果行内评论失败，在普通评论中说明
+                    review_result += f"\n\n⚠️ 行内评论添加失败，以下是建议的行内评论：\n\n"
+                    for comment in inline_comments[:3]:  # 只显示前3个
+                        review_result += f"- **{comment['file_path']}** (第{comment['line_number']}行): {comment['comment']}\n"
             
-            return final_result
+            # 清理缓存
+            self._clear_cache()
+            
+            return review_result
             
         except Exception as e:
+            # 清理缓存
+            self._clear_cache()
             return f"❌ 审查失败: {str(e)}"
     
     def review_merge_request_async(self, project_id, mr_iid, callback):

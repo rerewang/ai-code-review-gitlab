@@ -40,8 +40,41 @@ def webhook():
         logger.error(f"处理webhook失败: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+def is_bot_comment(webhook_data):
+    """检查是否是机器人自己的评论"""
+    try:
+        # 检查评论作者信息
+        user = webhook_data.get('user', {})
+        username = user.get('username', '').lower()
+        
+        # 检查是否是机器人用户（根据GitLab用户名或ID判断）
+        bot_indicators = [
+            'bot', 'ai', 'aibot', 'robot', 'automation', 'ci', 'jenkins', 'gitlab-ci'
+        ]
+        
+        # 如果用户名包含机器人标识，则认为是机器人评论
+        if any(indicator in username for indicator in bot_indicators):
+            return True
+        
+        # 检查评论内容是否包含机器人标识
+        note_body = webhook_data.get('object_attributes', {}).get('note', '').lower()
+        bot_content_indicators = [
+            '🤖 ai代码审查机器人',
+            '🤖 **ai代码审查机器人**',
+            '*由ai代码审查机器人自动生成*',
+            'ai代码审查完成'
+        ]
+        
+        if any(indicator in note_body for indicator in bot_content_indicators):
+            return True
+        
+        return False
+    except Exception as e:
+        logger.error(f"检查机器人评论失败: {e}")
+        return False
+
 def handle_merge_request_event(webhook_data):
-    """处理Merge Request事件"""
+    """处理Merge Request事件（优化版）"""
     # 检查是否是打开事件
     if not gitlab_client.is_merge_request_opened(webhook_data):
         return jsonify({'status': 'ignored', 'message': '不是Merge Request打开事件'}), 200
@@ -52,25 +85,56 @@ def handle_merge_request_event(webhook_data):
     
     logger.info(f"开始审查 MR #{mr_iid} in project {project_id}")
     
+    # 立即添加处理中的评论（避免使用触发关键词）
+    processing_comment = """🤖 **AI代码审查机器人**
+
+⏳ 正在处理智能分析请求...
+
+**处理步骤：**
+1. 📋 分析代码变更
+2. 🔍 获取相关上下文
+3. 🤖 AI智能分析
+4. 💬 生成详细建议
+
+请稍候，分析结果将在几分钟内完成。"""
+    
+    try:
+        gitlab_client.add_comment(project_id, mr_iid, processing_comment)
+        logger.info(f"已添加处理中评论到 MR #{mr_iid}")
+    except Exception as e:
+        logger.error(f"添加处理中评论失败: {e}")
+    
     # 异步执行代码审查
     def review_callback(review_result):
         try:
-            # 添加评论到GitLab
-            gitlab_client.add_comment(project_id, mr_iid, review_result)
-            logger.info(f"审查完成，已添加评论到 MR #{mr_iid}")
+            # 添加最终审查结果评论（避免使用触发关键词）
+            final_comment = f"""🤖 **AI智能分析完成**
+
+{review_result}
+
+---
+*由AI代码审查机器人自动生成*"""
+            
+            gitlab_client.add_comment(project_id, mr_iid, final_comment)
+            logger.info(f"审查完成，已添加最终评论到 MR #{mr_iid}")
         except Exception as e:
-            logger.error(f"添加评论失败: {e}")
+            logger.error(f"添加最终评论失败: {e}")
     
     code_reviewer.review_merge_request_async(project_id, mr_iid, review_callback)
     
-    return jsonify({'status': 'success', 'message': '审查已启动'}), 200
+    return jsonify({'status': 'success', 'message': '审查已启动，正在处理中...'}), 200
 
 def handle_note_event(webhook_data):
-    """处理评论事件"""
+    """处理评论事件（优化版）"""
     try:
         # 检查是否是Merge Request的评论
         if webhook_data.get('merge_request') is None:
             return jsonify({'status': 'ignored', 'message': '不是Merge Request评论'}), 200
+        
+        # 检查是否是机器人自己的评论，避免循环触发
+        if is_bot_comment(webhook_data):
+            logger.info("检测到机器人自己的评论，跳过处理")
+            return jsonify({'status': 'ignored', 'message': '机器人自己的评论，跳过处理'}), 200
         
         # 检查评论内容是否包含触发关键词
         note_body = webhook_data.get('object_attributes', {}).get('note', '').strip().lower()
@@ -87,18 +151,45 @@ def handle_note_event(webhook_data):
         
         logger.info(f"评论触发审查: MR #{mr_iid}, 评论ID: {comment_id}, 内容: {note_body}")
         
+        # 立即回复触发确认（避免使用触发关键词）
+        trigger_comment = f"""🤖 **AI代码审查机器人**
+
+✅ 检测到触发关键词: `{note_body}`
+⏳ 正在启动智能分析...
+
+**处理步骤：**
+1. 📋 分析代码变更
+2. 🔍 获取相关上下文  
+3. 🤖 AI智能分析
+4. 💬 生成详细建议
+
+请稍候，分析结果将在几分钟内完成。"""
+        
+        try:
+            gitlab_client.add_comment(project_id, mr_iid, trigger_comment)
+            logger.info(f"已添加触发确认评论到 MR #{mr_iid}")
+        except Exception as e:
+            logger.error(f"添加触发确认评论失败: {e}")
+        
         # 异步执行代码审查
         def review_callback(review_result):
             try:
-                # 添加评论到GitLab
-                gitlab_client.add_comment(project_id, mr_iid, review_result)
-                logger.info(f"评论触发审查完成，已添加评论到 MR #{mr_iid}")
+                # 添加最终审查结果评论（避免使用触发关键词）
+                final_comment = f"""🤖 **AI智能分析完成** (由评论触发)
+
+{review_result}
+
+---
+*由AI代码审查机器人自动生成*"""
+                
+                gitlab_client.add_comment(project_id, mr_iid, final_comment)
+                logger.info(f"评论触发审查完成，已添加最终评论到 MR #{mr_iid}")
             except Exception as e:
-                logger.error(f"添加评论失败: {e}")
+                logger.error(f"添加最终评论失败: {e}")
         
         code_reviewer.review_merge_request_async(project_id, mr_iid, review_callback)
         
-        return jsonify({'status': 'success', 'message': '评论触发审查已启动'}), 200
+        return jsonify({'status': 'success', 'message': '评论触发审查已启动，正在处理中...'}), 200
         
     except Exception as e:
         logger.error(f"处理评论事件失败: {e}")
@@ -115,6 +206,14 @@ def index():
     return jsonify({
         'name': 'AI代码审查GitLab机器人',
         'version': '1.0.0',
+        'features': [
+            '🚀 性能优化版本',
+            '💾 文件内容缓存',
+            '⚡ 批量AI处理',
+            '💬 即时反馈',
+            '🔍 上下文增强',
+            '📝 行内评论'
+        ],
         'endpoints': {
             'webhook': '/webhook',
             'health': '/health'
@@ -133,6 +232,6 @@ def handle_error(error):
     }), error.code
 
 if __name__ == '__main__':
-    logger.info(f"启动AI代码审查服务，监听 {HOST}:{PORT}")
+    logger.info(f"启动AI代码审查服务（性能优化版），监听 {HOST}:{PORT}")
     app.run(host=HOST, port=PORT, debug=True)
 # @cursor end 
