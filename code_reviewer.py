@@ -363,8 +363,14 @@ class CodeReviewer:
             # 添加真正的行内评论
             if inline_comments:
                 try:
-                    self.gitlab_client.add_multiple_inline_comments(project_id, mr_iid, inline_comments)
-                    review_result += f"\n\n✅ 已添加 {len(inline_comments)} 个行内评论"
+                    # 用lambda适配新接口
+                    def ai_comment_func(file_path, line_number, code_line):
+                        for c in inline_comments:
+                            if c['file_path'] == file_path and c['line_number'] == line_number:
+                                return c['comment']
+                        return "建议检查这行代码的逻辑"
+                    visible_count = self.gitlab_client.add_multiple_inline_comments(project_id, mr_iid, ai_comment_func)
+                    review_result += f"\n\n✅ 已添加 {visible_count} 个行内评论"
                 except Exception as e:
                     print(f"添加行内评论失败: {e}")
                     # 如果行内评论失败，在普通评论中说明
