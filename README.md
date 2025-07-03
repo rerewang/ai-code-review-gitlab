@@ -40,6 +40,7 @@ python3 app.py
 - **阿里云通义千问**: 中文支持好
 - **OpenAI**: 全球通用
 - **DeepSeek**: 专业代码模型
+- **Amazon Q**: 支持CLI方式调用
 
 ### 触发关键词
 - `/review`
@@ -81,10 +82,15 @@ python3 performance_test.py
 
 # 功能测试
 python3 test_context_and_inline.py
+
+# Amazon Q CLI完整测试
+python3 test_amazonq_cli.py
 ```
 
 ## 📚 文档
 
+- [使用指南](使用指南.md) - 快速上手
+- [Amazon Q集成指南](docs/amazon-q-integration.md) - 与AI助手直接交互
 - [更新日志](docs/CHANGELOG.md)
 - [v2.0性能优化说明](docs/v2.0-performance-optimization.md)
 

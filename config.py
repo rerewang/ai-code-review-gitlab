@@ -12,6 +12,10 @@ GITLAB_TOKEN = os.getenv("GITLAB_TOKEN", "your-gitlab-token-here")
 # 支持的AI提供商: siliconflow, aliyun, openai, deepseek等
 AI_PROVIDER = os.getenv("AI_PROVIDER", "siliconflow")
 
+# Amazon Q CLI 配置
+AMAZONQ_CLI_PATH = os.getenv("AMAZONQ_CLI_PATH", "q")
+AMAZONQ_USE_CLI = os.getenv("AMAZONQ_USE_CLI", "false").lower() == "true"
+
 # 硅流配置 (SiliconFlow)
 SILICONFLOW_API_URL = os.getenv("SILICONFLOW_API_URL", "https://api.siliconflow.cn/v1/chat/completions")
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "your-siliconflow-api-key-here")
@@ -118,4 +122,6 @@ REVIEW_PROMPT = """
 
 代码变更内容：
 {code_changes}
-""" 
+"""
+
+ 

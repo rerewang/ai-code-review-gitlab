@@ -41,6 +41,5 @@ MANIFEST
 *.temp
 
 # 测试文件
-test_*.py
 *_test.py
 # @cursor end 

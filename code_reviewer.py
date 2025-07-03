@@ -3,14 +3,17 @@ import re
 import threading
 from typing import List, Dict, Optional
 from config import REVIEW_FILE_TYPES, IGNORE_FILE_TYPES, MAX_FILES, CONTEXT_LINES
+from amazonq_reviewer import AmazonQReviewer
 # from prd_analyzer import PRDAnalyzer  # 暂不启用PRD分析
 
 class CodeReviewer:
-    """代码审查器"""
+    """代码审查器 - 集成Amazon Q AI助手"""
     
     def __init__(self, gitlab_client, ai_client):
         self.gitlab_client = gitlab_client
         self.ai_client = ai_client
+        # 初始化Amazon Q审查客户端
+        self.amazonq_reviewer = AmazonQReviewer()
         # self.prd_analyzer = PRDAnalyzer(gitlab_client)  # 暂不启用PRD分析
         
         # 添加缓存机制
@@ -334,9 +337,9 @@ class CodeReviewer:
         return inline_comments
     
     def review_merge_request(self, project_id, mr_iid):
-        """审查整个Merge Request（优化版）"""
+        """审查整个Merge Request（使用Amazon Q AI助手）"""
         try:
-            # 获取代码变更
+            # 获取代码变更和MR信息
             changes = self.gitlab_client.get_merge_request_changes(project_id, mr_iid)
             merge_info = self.gitlab_client.get_merge_request_info(project_id, mr_iid)
             
@@ -352,31 +355,48 @@ class CodeReviewer:
             if not formatted_changes.strip():
                 return "✅ 没有需要审查的代码变更"
             
-            # 使用AI审查
-            review_result = self.ai_client.review_code(formatted_changes)
+            # 准备项目和MR信息
+            project_info = {
+                'id': project_id,
+                'name': merge_info.get('project', {}).get('name', 'Unknown Project')
+            }
             
-            # 生成真正的行内评论
-            inline_comments = self.generate_inline_comments(
-                changes, project_id, merge_info.get('source_branch', 'main')
+            # 使用Amazon Q进行代码审查
+            print(f"🤖 使用Amazon Q AI助手审查 MR #{mr_iid}")
+            review_result = self.amazonq_reviewer.review_merge_request(
+                project_info, merge_info, formatted_changes
             )
             
-            # 添加真正的行内评论
-            if inline_comments:
-                try:
-                    # 用lambda适配新接口
-                    def ai_comment_func(file_path, line_number, code_line):
-                        for c in inline_comments:
-                            if c['file_path'] == file_path and c['line_number'] == line_number:
-                                return c['comment']
-                        return "建议检查这行代码的逻辑"
-                    visible_count = self.gitlab_client.add_multiple_inline_comments(project_id, mr_iid, ai_comment_func)
-                    review_result += f"\n\n✅ 已添加 {visible_count} 个行内评论"
-                except Exception as e:
-                    print(f"添加行内评论失败: {e}")
-                    # 如果行内评论失败，在普通评论中说明
-                    review_result += f"\n\n⚠️ 行内评论添加失败，以下是建议的行内评论：\n\n"
-                    for comment in inline_comments[:3]:  # 只显示前3个
-                        review_result += f"- **{comment['file_path']}** (第{comment['line_number']}行): {comment['comment']}\n"
+            # 生成行内评论（使用Amazon Q）
+            try:
+                print("🤖 生成行内评论建议...")
+                inline_comments = self.amazonq_reviewer.generate_inline_comments(changes)
+                
+                if inline_comments:
+                    # 添加行内评论到GitLab
+                    added_count = 0
+                    for comment in inline_comments[:5]:  # 限制数量
+                        try:
+                            self.gitlab_client.add_inline_comment(
+                                project_id, mr_iid,
+                                comment['file_path'],
+                                comment['line_number'],
+                                f"🤖 {comment['comment']}"
+                            )
+                            added_count += 1
+                        except Exception as e:
+                            print(f"添加行内评论失败: {e}")
+                    
+                    if added_count > 0:
+                        review_result += f"\n\n✅ 已添加 {added_count} 个AI行内评论"
+                    
+            except Exception as e:
+                print(f"生成行内评论失败: {e}")
+                review_result += f"\n\n⚠️ 行内评论生成失败: {str(e)}"
+            
+            # 添加审查统计信息
+            stats = self.amazonq_reviewer.get_review_stats()
+            review_result += f"\n\n📊 **审查统计**: 已完成 {stats['total_reviews']} 次审查，平均耗时 {stats['avg_duration']}秒"
             
             # 清理缓存
             self._clear_cache()
@@ -386,7 +406,19 @@ class CodeReviewer:
         except Exception as e:
             # 清理缓存
             self._clear_cache()
-            return f"❌ 审查失败: {str(e)}"
+            error_msg = f"❌ Amazon Q审查失败: {str(e)}"
+            print(error_msg)
+            
+            # 如果Amazon Q失败，回退到原有AI客户端
+            try:
+                print("🔄 回退到备用AI客户端...")
+                formatted_changes = self.format_code_changes_with_context(
+                    changes, project_id, merge_info.get('source_branch', 'main')
+                )
+                backup_result = self.ai_client.review_code(formatted_changes)
+                return f"{error_msg}\n\n🔄 **备用审查结果**:\n{backup_result}"
+            except Exception as backup_error:
+                return f"{error_msg}\n🔄 备用审查也失败: {str(backup_error)}"
     
     def review_merge_request_async(self, project_id, mr_iid, callback):
         """异步审查Merge Request"""
