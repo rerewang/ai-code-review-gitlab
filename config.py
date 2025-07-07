@@ -8,52 +8,14 @@ load_dotenv()
 GITLAB_URL = os.getenv("GITLAB_URL", "https://gitlab.com")
 GITLAB_TOKEN = os.getenv("GITLAB_TOKEN", "your-gitlab-token-here")
 
-# ==================== AI模型配置 ====================
+# ==================== AI模型配置（简化版） ====================
 # 支持的AI提供商: siliconflow, aliyun, openai, deepseek等
 AI_PROVIDER = os.getenv("AI_PROVIDER", "siliconflow")
 
-# 硅流配置 (SiliconFlow)
-SILICONFLOW_API_URL = os.getenv("SILICONFLOW_API_URL", "https://api.siliconflow.cn/v1/chat/completions")
-SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "your-siliconflow-api-key-here")
-SILICONFLOW_MODEL = os.getenv("SILICONFLOW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
-
-# 阿里云通义千问配置 (Aliyun Qwen)
-ALIYUN_API_URL = os.getenv("ALIYUN_API_URL", "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation")
-ALIYUN_API_KEY = os.getenv("ALIYUN_API_KEY", "your-aliyun-api-key-here")
-ALIYUN_MODEL = os.getenv("ALIYUN_MODEL", "qwen2.5-72b-instruct")
-
-# OpenAI配置
-OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-# DeepSeek配置
-DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your-deepseek-api-key-here")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-
-# 根据AI_PROVIDER选择配置
-if AI_PROVIDER == "siliconflow":
-    AI_API_URL = SILICONFLOW_API_URL
-    AI_API_KEY = SILICONFLOW_API_KEY
-    AI_MODEL = SILICONFLOW_MODEL
-elif AI_PROVIDER == "aliyun":
-    AI_API_URL = ALIYUN_API_URL
-    AI_API_KEY = ALIYUN_API_KEY
-    AI_MODEL = ALIYUN_MODEL
-elif AI_PROVIDER == "openai":
-    AI_API_URL = OPENAI_API_URL
-    AI_API_KEY = OPENAI_API_KEY
-    AI_MODEL = OPENAI_MODEL
-elif AI_PROVIDER == "deepseek":
-    AI_API_URL = DEEPSEEK_API_URL
-    AI_API_KEY = DEEPSEEK_API_KEY
-    AI_MODEL = DEEPSEEK_MODEL
-else:
-    # 默认使用硅流
-    AI_API_URL = SILICONFLOW_API_URL
-    AI_API_KEY = SILICONFLOW_API_KEY
-    AI_MODEL = SILICONFLOW_MODEL
+# 通用AI配置（用户只需要配置这一组）
+AI_API_URL = os.getenv("AI_API_URL", "https://api.siliconflow.cn/v1/chat/completions")
+AI_API_KEY = os.getenv("AI_API_KEY", "your-api-key-here")
+AI_MODEL = os.getenv("AI_MODEL", "Qwen/Qwen2.5-72B-Instruct")
 
 # ==================== 服务器配置 ====================
 HOST = os.getenv("HOST", "0.0.0.0")
